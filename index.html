@@ -409,7 +409,9 @@ html,body{background:var(--bg);font-family:'Syne',sans-serif;color:var(--cream);
       <div class="ob-header-title" id="ob-title">Bem-vindo ao seu Plano de Estudos!</div>
       <div class="ob-header-sub" id="ob-sub">Vamos configurar tudo em dois passos rápidos.</div>
     </div>
-    <div class="ob-body" id="ob-body"></div>
+    <div class="ob-body" id="ob-body">
+      <!-- Step content injected here -->
+    </div>
   </div>
 </div>
 
@@ -473,13 +475,17 @@ html,body{background:var(--bg);font-family:'Syne',sans-serif;color:var(--cream);
   <div class="mobile-bottom-nav-inner" id="mobile-bottom-nav-inner"></div>
 </div>
 
+<!-- React + Babel for the Diário view -->
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<!-- Firebase compat SDK -->
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 
+<!-- ── FIREBASE2 INIT (usando SDK compat em vez de módulo ES) ── -->
 <script>
 function tryInitFirebase2() {
   if (window.__firebaseApp && typeof firebase !== 'undefined' && firebase.firestore) {
@@ -506,6 +512,7 @@ function tryInitFirebase2() {
 </script>
 
 <script>
+// ══ FIREBASE CONFIG ══
 const FIREBASE_CONFIG = {
   apiKey:            "AIzaSyDhovoIrxDtZi384N5wBvth4UXm4-TOIIg",
   authDomain:        "app1-xeja61.firebaseapp.com",
@@ -518,8 +525,11 @@ firebase.initializeApp(FIREBASE_CONFIG);
 window.__firebaseApp = firebase.app();
 const auth = firebase.auth();
 const db   = firebase.firestore();
+
+// Iniciar firebase2 após o app estar pronto
 tryInitFirebase2();
 
+// ══ CONSTANTS ══
 const T   = (h,m=0) => h*60+m;
 const fmt = m => `${Math.floor(m/60)}h${m%60?String(m%60).padStart(2,'0'):''}`;
 const fmtT= m => `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;
@@ -539,6 +549,7 @@ const DAYS_BASE = [
   {id:'dom',name:'Dom',fullName:'Domingo',jsDay:0}
 ];
 
+// ══ STATE ══
 let STATE = { checks:{}, routines:[], tasks:[], schedule:[], subjects:[], meta:{examName:'',bancaName:''} };
 let currentUser = null;
 let syncTimer   = null;
@@ -547,6 +558,7 @@ let rotDay      = 1;
 let obStep      = 0;
 let obSubjTemp  = [];
 
+// ══ AUTH ══
 function googleLogin() {
   const loading = document.getElementById('auth-loading');
   const errEl   = document.getElementById('auth-error');
@@ -564,6 +576,7 @@ function logout() {
 auth.onAuthStateChanged(async user => {
   currentUser = user;
   if (user) {
+    window.__currentUserId = user.uid;
     document.getElementById('auth-overlay').style.display = 'none';
     const firstName = user.displayName?.split(' ')[0] || 'Usuário';
     document.getElementById('user-name').textContent = firstName;
@@ -583,6 +596,7 @@ auth.onAuthStateChanged(async user => {
   }
 });
 
+// ══ FIRESTORE ══
 function ref(doc) { return db.collection('users').doc(currentUser.uid).collection('data').doc(doc); }
 async function loadFromFirestore() {
   setSyncBadge('syncing','Carregando…');
@@ -630,12 +644,14 @@ const saveSubjects = a   => { STATE.subjects=a;  syncFS('subjects',a); };
 const getMeta      = ()  => STATE.meta;
 const saveMeta     = o   => { STATE.meta=o;      syncFS('meta',o); };
 
+// ══ SCHEDULE INIT ══
 function initSchedule() {
   return DAYS_BASE.map(d=>({...d, blocks:[]}));
 }
 function getDay(id)   { return getSchedule().find(d=>d.id===id); }
 function getDayByJS(jd){ return getSchedule().find(d=>d.jsDay===jd); }
 
+// ══ HELPERS ══
 const nowMin   = ()  => { const n=new Date(); return n.getHours()*60+n.getMinutes(); };
 const todayJS  = ()  => new Date().getDay();
 const todayStr = ()  => new Date().toISOString().split('T')[0];
@@ -651,6 +667,7 @@ function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').repl
 function totalMins(blocks){return blocks.reduce((a,b)=>a+(b.end-b.start),0);}
 function allScheduleMins(){return getSchedule().reduce((a,d)=>a+totalMins(d.blocks),0);}
 
+// ══ ONBOARDING ══
 function showOnboarding() {
   obStep = 0; obSubjTemp = [];
   document.getElementById('onboarding-overlay').classList.add('visible');
@@ -703,6 +720,7 @@ function obFinish() {
   setInterval(updateClock,1000); setInterval(()=>renderAll(),60000);
 }
 
+// ══ NAVIGATION ══
 function initActive() {
   const jd = todayJS();
   const td = getDayByJS(jd);
@@ -734,6 +752,7 @@ function setRotDay(d) { rotDay=d; renderAll(); }
 function toggleSidebar(){ document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebar-overlay').classList.toggle('open'); }
 function closeSidebar() { document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebar-overlay').classList.remove('open'); }
 
+// ══ BLOCK CRUD ══
 function openBlockModal(dayId, editId=null) {
   const sc=getSchedule(), day=sc.find(d=>d.id===dayId);
   if(!day) return;
@@ -809,6 +828,7 @@ function resetAll() {
   showConfirm('Limpar todos os checks?','Desmarca todos os blocos concluídos.',()=>{saveChecked({});renderAll();});
 }
 
+// ══ SUBJECT CRUD ══
 function openSubjectModal(editId=null, isOnboarding=false, callback=null) {
   const subjects=isOnboarding?obSubjTemp:getSubjects();
   const e=editId?subjects.find(s=>s.id===editId):null;
@@ -866,7 +886,9 @@ function delSubjectConfirm(id, isOnboarding) {
   });
 }
 
+// ══ SETTINGS ══
 function openSettingsMetaModal() {
+  const meta=getMeta();
   rmv('meta-modal');
   const el=mk('div','meta-modal',`<div class="modal-overlay" id="mm-bg">
     <div class="modal-card">
@@ -891,6 +913,7 @@ function saveMetaModal() {
   rmv('meta-modal'); renderAll();
 }
 
+// ══ ROUTINE MODAL ══
 function openRoutineModal(editId=null) {
   const routines=getRoutines(), e=editId?routines.find(r=>r.id===editId):null;
   const em=e?e.emoji:'🎯', co=e?e.color:COLORS[0], days=e?e.days:[rotDay];
@@ -941,6 +964,7 @@ function saveRoutine(editId) {
 }
 function delRoutineConfirm(id){rmv('routine-modal');showConfirm('Excluir bloco?','Este bloco recorrente será removido.',()=>{saveRoutines(getRoutines().filter(r=>r.id!==id));renderAll();});}
 
+// ══ TASK MODAL ══
 function openTaskModal(editId=null) {
   const tasks=getTasks(), e=editId?tasks.find(t=>t.id===editId):null;
   rmv('task-modal');
@@ -980,6 +1004,7 @@ function saveTask(editId) {
 function toggleTask(id){const ts=getTasks();const t=ts.find(t=>t.id===id);if(t){t.done=!t.done;saveTasks(ts);}renderAll();}
 function delTaskConfirm(id){rmv('task-modal');showConfirm('Excluir tarefa?','Esta tarefa será removida.',()=>{saveTasks(getTasks().filter(t=>t.id!==id));renderAll();});}
 
+// ══ UI HELPERS ══
 function showConfirm(title,msg,cb){
   rmv('confirm-modal');
   const el=mk('div','confirm-modal',`<div class="modal-overlay" id="cm-bg">
@@ -1004,6 +1029,7 @@ function showAlert(msg){
   document.getElementById('am-bg').onclick=ev=>{if(ev.target===ev.currentTarget)rmv('alert-modal');};
 }
 
+// ══ RENDER ══
 function renderBlock(b, dayId, isToday) {
   const ch=getChecked(), cur=isToday&&nowMin()>=b.start&&nowMin()<b.end, done=!!ch[b.id];
   return `<div class="block${cur?' current':''}${done?' done':''}" onclick="toggleBlock('${b.id}')">
@@ -1082,49 +1108,25 @@ function renderDayView(d) {
     </div>
   </div>`;
 }
-
-// ══ FIXED: renderSummaryView now groups by block data directly (name+color+emoji)
-// instead of only iterating subjects list — fixes empty summary when blocks exist
 function renderSummaryView() {
-  const ch=getChecked(), sc=getSchedule();
+  const ch=getChecked(), sc=getSchedule(), subjects=getSubjects();
   const allBlocks=sc.flatMap(d=>d.blocks);
   const done=allBlocks.filter(b=>!!ch[b.id]).length;
   const totalAllMins=allScheduleMins();
-
   if(!allBlocks.length) {
     return `<div class="summary-view${activeView==='sum'?' visible':''}" id="view-sum">
       <div class="sum-title">📊 Resumo de Carga Horária</div>
       <div class="sum-empty"><div class="sum-empty-icon">📊</div><div class="sum-empty-text">Adicione blocos de estudo nos dias da semana para ver o resumo aqui.</div></div>
     </div>`;
   }
-
-  // Group blocks by subjectId (falling back to name if no id)
-  const groupMap = {};
-  sc.forEach(day => {
-    day.blocks.forEach(b => {
-      const key = b.subjectId || ('name:' + b.name);
-      if (!groupMap[key]) {
-        groupMap[key] = {
-          name: b.name,
-          emoji: b.emoji || '📚',
-          color: b.color || '#8a6030',
-          mins: 0,
-          total: 0,
-          doneCnt: 0,
-          days: new Set()
-        };
-      }
-      const mins = b.end - b.start;
-      groupMap[key].mins += mins;
-      groupMap[key].total += 1;
-      if (ch[b.id]) groupMap[key].doneCnt += 1;
-      groupMap[key].days.add(day.id);
-    });
-  });
-
-  const subjStats = Object.values(groupMap).filter(x => x.mins > 0).sort((a,b) => b.mins - a.mins);
-  const maxMins = Math.max(...subjStats.map(x => x.mins), 1);
-
+  const subjStats=subjects.map(s=>{
+    const blocks=allBlocks.filter(b=>b.subjectId===s.id);
+    const mins=blocks.reduce((a,b)=>a+(b.end-b.start),0);
+    const doneCnt=blocks.filter(b=>!!ch[b.id]).length;
+    const daySet=new Set(sc.filter(d=>d.blocks.some(b=>b.subjectId===s.id)).map(d=>d.id));
+    return {s,mins,doneCnt,total:blocks.length,days:daySet.size};
+  }).filter(x=>x.mins>0).sort((a,b)=>b.mins-a.mins);
+  const maxMins=Math.max(...subjStats.map(x=>x.mins),1);
   return `<div class="summary-view${activeView==='sum'?' visible':''}" id="view-sum">
     <div class="sum-title">📊 Resumo de Carga Horária</div>
     <div class="sum-grid">
@@ -1134,17 +1136,14 @@ function renderSummaryView() {
     </div>
     ${subjStats.length?`<div class="sum-table-wrap"><table class="sum-table">
       <thead><tr><th>Matéria</th><th>Dias</th><th>Horas/sem</th><th>Visual</th></tr></thead>
-      <tbody>${subjStats.map(x=>`<tr>
-        <td><span class="sum-pip" style="background:${x.color}"></span>${esc(x.emoji)} ${esc(x.name)}</td>
-        <td style="font-family:'Space Mono',monospace;font-size:.67rem">${x.days.size}×/sem</td>
+      <tbody>${subjStats.map(x=>`<tr><td><span class="sum-pip" style="background:${x.s.color}"></span>${esc(x.s.name)}</td>
+        <td style="font-family:'Space Mono',monospace;font-size:.67rem">${x.days}×/sem</td>
         <td style="font-family:'Space Mono',monospace;color:var(--gold)">${fmt(x.mins)}</td>
-        <td><div class="sum-bar-wrap"><div class="sum-bar-fill" style="width:${Math.round(x.mins/maxMins*100)}%;background:${x.color}"></div></div></td>
-      </tr>`).join('')}
+        <td><div class="sum-bar-wrap"><div class="sum-bar-fill" style="width:${Math.round(x.mins/maxMins*100)}%;background:${x.s.color}"></div></div></td></tr>`).join('')}
         <tr class="total-row"><td colspan="2">🏆 Total</td><td>${fmt(totalAllMins)}</td><td><div class="sum-bar-wrap"><div class="sum-bar-fill" style="width:100%;background:var(--gold)"></div></div></td></tr>
       </tbody></table></div>`:''}
   </div>`;
 }
-
 function renderRoutineView() {
   const routines=getRoutines(), tasks=getTasks(), jd=todayJS();
   const pills=[1,2,3,4,5,6,0].map(d=>{
@@ -1276,6 +1275,7 @@ function renderAll() {
   document.getElementById('stat-total').textContent=totalMins?fmt(totalMins):'—';
 }
 
+// ══ CLOCK ══
 const DIAS_C=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
 function updateClock() {
   const n=new Date();
@@ -1726,7 +1726,8 @@ function DiaryApp(){
       const fb=window.__firebase2;
       if(!fb){setFbError(true);setLoading(false);return;}
       try{
-        const colRef=fb.collection(fb.db,"estudos");
+        const uid=window.__currentUserId||firebase.auth().currentUser?.uid;
+        const colRef=fb.collection(fb.db,"users/"+uid+"/estudos");
         const q=fb.query(colRef,fb.orderBy("date","desc"));
         unsub=fb.onSnapshot(q,snap=>{
           if(aborted)return;
@@ -1751,7 +1752,8 @@ function DiaryApp(){
     const fb=window.__firebase2;
     const date=selDay||todayStr;
     try{
-      const colRef=fb.collection(fb.db,"estudos");
+      const uid=window.__currentUserId||firebase.auth().currentUser?.uid;
+      const colRef=fb.collection(fb.db,"users/"+uid+"/estudos");
       const mainRef=await fb.addDoc(colRef,{date,discipline:form.discipline.trim(),content:form.content.trim(),duration:Number(form.duration),notes:form.notes.trim(),isRevision:false,originalId:null,completed:true,createdAt:new Date().toISOString()});
       if(form.useRev){
         await Promise.all(REVISION_DAYS.map(days=>fb.addDoc(colRef,{date:calAddDays(date,days),discipline:form.discipline.trim(),content:form.content.trim(),duration:20,notes:"",isRevision:true,originalId:mainRef.id,completed:false,createdAt:new Date().toISOString()})));
@@ -1765,7 +1767,8 @@ function DiaryApp(){
     if(!fbReady)return;
     const fb=window.__firebase2;
     try{
-      const docRef=fb.doc(fb.db,"estudos",id);
+      const uid=window.__currentUserId||firebase.auth().currentUser?.uid;
+      const docRef=fb.doc(fb.db,"users/"+uid+"/estudos",id);
       await fb.updateDoc(docRef,{completed:true});
       showToast("✅ Revisão concluída!");
     }catch(e){showToast("❌ Erro: "+e.message);}
