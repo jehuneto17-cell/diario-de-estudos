@@ -782,6 +782,7 @@ function openBlockModal(dayId, editId=null) {
       <div class="modal-actions">
         ${editId?`<button class="btn-danger" onclick="delBlockConfirm('${dayId}','${editId}')">🗑 Excluir</button>`:''}
         <button class="btn-secondary" onclick="rmv('block-modal')">Cancelar</button>
+        ${editId?`<button class="btn-secondary" onclick="openConvertToRoutineModal('${dayId}','${editId}')" title="Transformar em rotina recorrente" style="border-color:rgba(122,78,13,.4);color:var(--gold-dim)">🔄 Rotina</button>`:''}
         <button class="btn-primary" onclick="saveBlock('${dayId}','${editId||''}')">Salvar</button>
       </div>
     </div></div>`);
@@ -816,6 +817,70 @@ function saveBlock(dayId,editId) {
   }
   day.blocks.sort((a,b)=>a.start-b.start);
   saveSchedule(sc); rmv('block-modal'); renderAll();
+}
+function openConvertToRoutineModal(dayId, blockId) {
+  rmv('block-modal');
+  const sc=getSchedule(), day=sc.find(d=>d.id===dayId);
+  if(!day) return;
+  const b=day.blocks.find(b=>b.id===blockId);
+  if(!b) return;
+  const allDays=[1,2,3,4,5,6,0];
+  const preSelected=[day.jsDay];
+  rmv('convert-routine-modal');
+  const el=mk('div','convert-routine-modal',`<div class="modal-overlay" id="crm-bg">
+    <div class="modal-card" style="max-width:420px">
+      <div class="modal-title">🔄 Transformar em Rotina Recorrente</div>
+      <div style="font-family:'Crimson Pro',serif;font-size:.82rem;color:var(--muted2);font-style:italic;margin-bottom:16px;line-height:1.5;padding:10px 13px;background:rgba(122,78,13,.07);border-radius:8px;border:1px solid var(--border2)">
+        <strong style="font-style:normal;color:var(--cream)">${b.emoji} ${esc(b.name)}</strong><br>
+        ${fmtT(b.start)} — ${fmtT(b.end)} · ${b.dur}
+        ${b.sub?`<br><span style="opacity:.7">${esc(b.sub)}</span>`:''}
+      </div>
+      <div class="form-group">
+        <label class="form-label">Repetir nos dias</label>
+        <div class="days-grid" style="flex-wrap:wrap">
+          ${[1,2,3,4,5,6,0].map(d=>`<label class="day-check"><input type="checkbox" name="crm-d" value="${d}"${preSelected.includes(d)?' checked':''}><div class="day-check-box">${DS[d]}</div></label>`).join('')}
+        </div>
+      </div>
+      <div style="margin-top:6px;margin-bottom:16px;display:flex;gap:7px;flex-wrap:wrap">
+        <button onclick="crmSelectAll(true)" style="font-size:.65rem;font-weight:700;padding:4px 11px;border-radius:7px;border:1px solid var(--border2);background:none;color:var(--gold-dim);cursor:pointer;font-family:'Syne',sans-serif">✔ Selecionar todos</button>
+        <button onclick="crmSelectAll(false)" style="font-size:.65rem;font-weight:700;padding:4px 11px;border-radius:7px;border:1px solid var(--border2);background:none;color:var(--muted);cursor:pointer;font-family:'Syne',sans-serif">✕ Limpar</button>
+        <button onclick="crmSelectWeek()" style="font-size:.65rem;font-weight:700;padding:4px 11px;border-radius:7px;border:1px solid var(--border2);background:none;color:var(--gold-dim);cursor:pointer;font-family:'Syne',sans-serif">Seg→Sex</button>
+      </div>
+      <div style="font-family:'Crimson Pro',serif;font-size:.75rem;color:var(--muted);font-style:italic;margin-bottom:16px;line-height:1.5">
+        Um bloco de rotina recorrente será criado nos dias selecionados. O bloco original permanece inalterado.
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="rmv('convert-routine-modal')">Cancelar</button>
+        <button class="btn-primary" onclick="confirmConvertToRoutine('${dayId}','${blockId}')">🔄 Criar Rotina</button>
+      </div>
+    </div></div>`);
+  document.getElementById('crm-bg').onclick=ev=>{if(ev.target===ev.currentTarget)rmv('convert-routine-modal');};
+}
+function crmSelectAll(v){document.querySelectorAll('input[name="crm-d"]').forEach(c=>c.checked=v);}
+function crmSelectWeek(){document.querySelectorAll('input[name="crm-d"]').forEach(c=>c.checked=[1,2,3,4,5].includes(+c.value));}
+function confirmConvertToRoutine(dayId, blockId) {
+  const days=[...document.querySelectorAll('input[name="crm-d"]:checked')].map(c=>+c.value);
+  if(!days.length){showAlert('Selecione pelo menos um dia da semana.');return;}
+  const sc=getSchedule(), day=sc.find(d=>d.id===dayId);
+  if(!day) return;
+  const b=day.blocks.find(bl=>bl.id===blockId);
+  if(!b) return;
+  const rs=getRoutines();
+  rs.push({
+    id:'rot-'+Date.now(),
+    name:b.name,
+    sub:b.sub||'',
+    start:b.start,
+    end:b.end,
+    emoji:b.emoji,
+    color:b.color,
+    days
+  });
+  saveRoutines(rs);
+  rmv('convert-routine-modal');
+  const dayNames=days.map(d=>DS[d]).join(', ');
+  showAlert(`✅ Rotina criada com sucesso!\n\n"${b.emoji} ${b.name}" agora repete toda semana em: ${dayNames}.`);
+  renderAll();
 }
 function delBlockConfirm(dayId,blockId) {
   rmv('block-modal');
