@@ -550,7 +550,7 @@ const DAYS_BASE = [
 ];
 
 // ══ STATE ══
-let STATE = { checks:{}, routines:[], tasks:[], schedule:[], subjects:[], meta:{examName:'',bancaName:''} };
+let STATE = { checks:{}, routineChecks:{}, routines:[], tasks:[], schedule:[], subjects:[], meta:{examName:'',bancaName:''} };
 let currentUser = null;
 let syncTimer   = null;
 let activeView  = null;
@@ -601,11 +601,13 @@ function ref(doc) { return db.collection('users').doc(currentUser.uid).collectio
 async function loadFromFirestore() {
   setSyncBadge('syncing','Carregando…');
   try {
-    const [chS,roS,taS,scS,suS,meS] = await Promise.all([
+    const [chS,roS,taS,scS,suS,meS,rcS] = await Promise.all([
       ref('checks').get(), ref('routines').get(), ref('tasks').get(),
-      ref('schedule').get(), ref('subjects').get(), ref('meta').get()
+      ref('schedule').get(), ref('subjects').get(), ref('meta').get(),
+      ref('routineChecks').get()
     ]);
     STATE.checks   = chS.exists ? (chS.data().v||{})  : {};
+    STATE.routineChecks = rcS.exists ? (rcS.data().v||{}) : {};
     STATE.routines = roS.exists ? (roS.data().v||[])  : [];
     STATE.tasks    = taS.exists ? (taS.data().v||[])  : [];
     STATE.schedule = scS.exists ? (scS.data().v||[])  : initSchedule();
@@ -633,6 +635,8 @@ function setSyncBadge(state,text) {
 }
 const getChecked   = ()  => STATE.checks;
 const saveChecked  = o   => { STATE.checks=o;   syncFS('checks',o); };
+const getRoutineChecks = () => STATE.routineChecks;
+const saveRoutineChecks = o => { STATE.routineChecks=o; syncFS('routineChecks',o); };
 const getRoutines  = ()  => STATE.routines;
 const saveRoutines = a   => { STATE.routines=a;  syncFS('routines',a); };
 const getTasks     = ()  => STATE.tasks;
@@ -824,8 +828,15 @@ function delBlockConfirm(dayId,blockId) {
 function toggleBlock(id) {
   const ch=getChecked(); ch[id]=!ch[id]; saveChecked(ch); renderAll();
 }
+function toggleRoutineCheck(id, dateKey) {
+  const rc=getRoutineChecks();
+  const key=id+'_'+(dateKey||todayStr());
+  rc[key]=!rc[key];
+  saveRoutineChecks(rc);
+  renderAll();
+}
 function resetAll() {
-  showConfirm('Limpar todos os checks?','Desmarca todos os blocos concluídos.',()=>{saveChecked({});renderAll();});
+  showConfirm('Limpar todos os checks?','Desmarca todos os blocos concluídos.',()=>{saveChecked({});saveRoutineChecks({});renderAll();});
 }
 
 // ══ SUBJECT CRUD ══
@@ -1049,11 +1060,15 @@ function renderBlock(b, dayId, isToday) {
     </div>
   </div>`;
 }
-function renderRoutineBlockInDay(r, isToday) {
+function renderRoutineBlockInDay(r, isToday, dayDate) {
   const cur=isToday&&nowMin()>=r.start&&nowMin()<r.end;
   const durMin=r.end-r.start;
   const durStr=durMin>=60?`${Math.floor(durMin/60)}h${durMin%60?String(durMin%60).padStart(2,'0'):''}`:durMin+'min';
-  return `<div class="block${cur?' current':''}" style="cursor:default">
+  const rc=getRoutineChecks();
+  const dateKey=dayDate||todayStr();
+  const key=r.id+'_'+dateKey;
+  const done=!!rc[key];
+  return `<div class="block${cur?' current':''}${done?' done':''}" onclick="toggleRoutineCheck('${r.id}','${dateKey}')">
     <div class="block-accent" style="background:${r.color}"></div>
     <div class="block-body">
       <div class="block-time">${fmtT(r.start)} — ${fmtT(r.end)}</div>
@@ -1064,15 +1079,19 @@ function renderRoutineBlockInDay(r, isToday) {
         ${cur?'<span class="now-chip">▶ AGORA</span>':''}
       </div>
     </div>
+    <div class="block-actions">
+      <button class="block-act-btn check-btn" onclick="event.stopPropagation();toggleRoutineCheck('${r.id}','${dateKey}')">${done?'✓':''}</button>
+    </div>
   </div>`;
 }
 function renderDayView(d) {
   const isToday=d.jsDay===todayJS(), vis=activeView===d.id?' visible':'';
   const routines=getRoutines().filter(r=>r.days.includes(d.jsDay));
+  const dayDate=getDateForDay(d.jsDay);
   if(d.id==='dom') {
     const domRot=routines.sort((a,b)=>a.start-b.start);
     return `<div class="day-view${vis}" id="view-dom">
-      ${domRot.length?`<div style="padding:20px 22px 0"><div class="period-heading" style="margin-bottom:10px">🔄 Rotina do Dia</div>${domRot.map(r=>renderRoutineBlockInDay(r,isToday)).join('')}</div>`:''}
+      ${domRot.length?`<div style="padding:20px 22px 0"><div class="period-heading" style="margin-bottom:10px">🔄 Rotina do Dia</div>${domRot.map(r=>renderRoutineBlockInDay(r,isToday,dayDate)).join('')}</div>`:''}
       <div class="rest-view"><div class="rest-icon">🌿</div><div class="rest-text">Domingo — Dia de descanso</div><div style="font-size:.72rem;color:var(--muted);font-family:'Crimson Pro',serif;font-style:italic;margin-top:4px">Recarregue as energias para a semana.</div></div>
     </div>`;
   }
@@ -1097,12 +1116,12 @@ function renderDayView(d) {
     <div class="periods-grid">
       <div class="period-col">
         <div class="period-heading">☀ Manhã</div>
-        ${morningAll.map(b=>b.period?renderBlock(b,d.id,isToday):renderRoutineBlockInDay(b,isToday)).join('')}
+        ${morningAll.map(b=>b.period?renderBlock(b,d.id,isToday):renderRoutineBlockInDay(b,isToday,dayDate)).join('')}
         ${emptyMorning?`<div class="empty-day"><div class="empty-day-icon">📖</div><div class="empty-day-text">Nenhum bloco de manhã</div><button class="empty-day-btn" onclick="openBlockModal('${d.id}')">＋ Adicionar bloco</button></div>`:'<button class="col-add-btn" onclick="openBlockModal(\''+d.id+'\')">＋ Adicionar</button>'}
       </div>
       <div class="period-col">
         <div class="period-heading">🌙 Noite</div>
-        ${nightAll.map(b=>b.period?renderBlock(b,d.id,isToday):renderRoutineBlockInDay(b,isToday)).join('')}
+        ${nightAll.map(b=>b.period?renderBlock(b,d.id,isToday):renderRoutineBlockInDay(b,isToday,dayDate)).join('')}
         ${emptyNight?`<div class="empty-day"><div class="empty-day-icon">🌙</div><div class="empty-day-text">Nenhum bloco à noite</div><button class="empty-day-btn" onclick="openBlockModal('${d.id}')">＋ Adicionar bloco</button></div>`:'<button class="col-add-btn" onclick="openBlockModal(\''+d.id+'\')">＋ Adicionar</button>'}
       </div>
     </div>
